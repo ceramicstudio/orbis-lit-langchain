@@ -1,94 +1,97 @@
-import { OpenAIEmbeddings } from 'langchain/embeddings/openai'
-import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
-import { OpenAI } from 'langchain/llms/openai'
-import { loadQAStuffChain } from 'langchain/chains'
-import { Document } from 'langchain/document'
-import { timeout } from './config'
+import { OpenAIEmbeddings } from "langchain/embeddings/openai";
+import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
+import { OrbisDB } from "@useorbis/db-sdk";
+import { OrbisKeyDidAuth } from "@useorbis/db-sdk/auth";
+import crypto from "crypto";
+import axios from "axios";
+import { Lit } from "@/lib/litUtils";
 
-export const queryPineconeVectorStoreAndQueryLLM = async (
-  client,
-  indexName,
-  question
-) => {
-  // 1. Start query process
-  console.log('Querying Pinecone vector store...');
-  // 2. Retrieve the Pinecone index
-  const index = client.Index(indexName);
-  // 3. Create query embedding
-  const queryEmbedding = await new OpenAIEmbeddings().embedQuery(question)
-  // 4. Query Pinecone index and return top 10 matches
-  let queryResponse = await index.query({
-    queryRequest: {
-      topK: 10,
-      vector: queryEmbedding,
-      includeMetadata: true,
-      includeValues: true,
-    },
-  });
-  // 5. Log the number of matches 
-  console.log(`Found ${queryResponse.matches.length} matches...`);
-  // 6. Log the question being asked
-  console.log(`Asking question: ${question}...`);
-  if (queryResponse.matches.length) {
-    // 7. Create an OpenAI instance and load the QAStuffChain
-    const llm = new OpenAI({});
-    const chain = loadQAStuffChain(llm);
-    // 8. Extract and concatenate page content from matched documents
-    const concatenatedPageContent = queryResponse.matches
-      .map((match) => match.metadata.pageContent)
-      .join(" ");
-    // 9. Execute the chain with input documents and question
-    const result = await chain.call({
-      input_documents: [new Document({ pageContent: concatenatedPageContent })],
-      question: question,
-    });
-    // 10. Log the answer
-    console.log(`Answer: ${result.text}`);
-    return result.text
+export const queryLLM = async (question, context) => {
+  if (context.rows.length) {
+    const decryptedRows = await Promise.all(
+      context.rows.map(async (row) => {
+        const lit = new Lit();
+        const { ciphertext, dataToEncryptHash } = JSON.parse(row.content);
+        const decryptedContent = await lit.decrypt(
+          ciphertext,
+          dataToEncryptHash
+        );
+        return decryptedContent;
+      })
+    );
+
+    // Concatenate the decrypted rows into a single string
+    const concatenatedContext = decryptedRows.join(" ");
+
+    // Prepare prompt
+    const prompt = `
+      Use the following pieces of context to answer the question at the end. If you don't know the answer, just say that you don't know. Don't make up an answer.
+
+      Context:
+      ${concatenatedContext}
+
+      Question: ${question}
+
+      Helpful Answer:`;
+
+    // Send request to OpenAI API
+    const response = await axios.post(
+      "https://api.openai.com/v1/chat/completions",
+      {
+        model: "gpt-3.5-turbo", // or "gpt-4" based on your API key's availability
+        messages: [
+          { role: "system", content: "You are a helpful assistant." },
+          { role: "user", content: prompt },
+        ],
+        max_tokens: 1000, // Adjust based on your needs
+        temperature: 0.7, // Adjust for creativity vs. determinism
+      },
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        },
+      }
+    );
+
+    if (response.status !== 200) {
+      // Log the full response object if the request failed
+      console.error("Error response from API:", response);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    // Log the raw response text for debugging
+    const text = response.data;
+
+    console.log("API response:", text.choices[0].message.content);
+
+    return text.choices[0].message.content;
   } else {
     // 11. Log that there are no matches, so GPT-3 will not be queried
-    console.log('Since there are no matches, GPT-3 will not be queried.');
+    console.log("Since there are no matches, GPT-3 will not be queried.");
   }
 };
-export const createPineconeIndex = async (
-  client,
-  indexName,
-  vectorDimension
-) => {
-  // 1. Initiate index existence check
-  console.log(`Checking "${indexName}"...`);
-  // 2. Get list of existing indexes
-  const existingIndexes = await client.listIndexes();
-  // 3. If index doesn't exist, create it
-  if (!existingIndexes.includes(indexName)) {
-    // 4. Log index creation initiation
-    console.log(`Creating "${indexName}"...`);
-    // 5. Create index
-    await client.createIndex({
-      createRequest: {
-        name: indexName,
-        dimension: vectorDimension,
-        metric: 'cosine',
+
+export const updateOrbis = async (docs, context, table) => {
+  const lit = new Lit();
+
+  const db = new OrbisDB({
+    ceramic: {
+      gateway: "https://ceramic-orbisdb-mainnet-direct.hirenodes.io/",
+    },
+    nodes: [
+      {
+        gateway: "http://localhost:7008",
       },
-    });
-    // 6. Log successful creation
-      console.log(`Creating index.... please wait for it to finish initializing.`);
-    // 7. Wait for index initialization
-    await new Promise((resolve) => setTimeout(resolve, timeout));
-  } else {
-    // 8. Log if index already exists
-    console.log(`"${indexName}" already exists.`);
-  }
-};
+    ],
+  });
+  const seed = new Uint8Array(JSON.parse(process.env.ORBIS_SEED));
+  // Initiate the authenticator using the generated (or persisted) seed
+  const auth = await OrbisKeyDidAuth.fromSeed(seed);
 
+  // Authenticate the user
+  await db.connectUser({ auth });
 
-export const updatePinecone = async (client, indexName, docs) => {
-  console.log('Retrieving Pinecone index...');
-  // 1. Retrieve Pinecone index
-  const index = client.Index(indexName);
-  // 2. Log the retrieved index name
-  console.log(`Pinecone index retrieved: ${indexName}`);
-  // 3. Process each document in the docs array
   for (const doc of docs) {
     console.log(`Processing document: ${doc.metadata.source}`);
     const txtPath = doc.metadata.source;
@@ -97,7 +100,7 @@ export const updatePinecone = async (client, indexName, docs) => {
     const textSplitter = new RecursiveCharacterTextSplitter({
       chunkSize: 1000,
     });
-    console.log('Splitting text into chunks...');
+    console.log("Splitting text into chunks...");
     // 5. Split text into chunks (documents)
     const chunks = await textSplitter.createDocuments([text]);
     console.log(`Text split into ${chunks.length} chunks`);
@@ -108,13 +111,11 @@ export const updatePinecone = async (client, indexName, docs) => {
     const embeddingsArrays = await new OpenAIEmbeddings().embedDocuments(
       chunks.map((chunk) => chunk.pageContent.replace(/\n/g, " "))
     );
-    console.log('Finished embedding documents');
+    console.log("Finished embedding documents");
     console.log(
       `Creating ${chunks.length} vectors array with id, values, and metadata...`
     );
     // 7. Create and upsert vectors in batches of 100
-    const batchSize = 100;
-    let batch:any = [];
     for (let idx = 0; idx < chunks.length; idx++) {
       const chunk = chunks[idx];
       const vector = {
@@ -127,19 +128,44 @@ export const updatePinecone = async (client, indexName, docs) => {
           txtPath: txtPath,
         },
       };
-      batch = [...batch, vector]
-      // When batch is full or it's the last item, upsert the vectors
-      if (batch.length === batchSize || idx === chunks.length - 1) {
-        await index.upsert({
-          upsertRequest: {
-            vectors: batch,
-          },
-        });
-        // Empty the batch
-        batch = [];
+      function generateHash(content) {
+        return crypto.createHash("sha256").update(content).digest("hex");
+      }
+
+      const encryptedContent = await lit.encrypt(vector.metadata.pageContent);
+      const encryptedStringified = JSON.stringify(encryptedContent);
+
+      // wait one second
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // first check if the vector already exists
+      const query = `SELECT * FROM ${table} WHERE contenthash = '${generateHash(
+        encryptedStringified
+      )}'`;
+      const res = await db.select().raw(query).run();
+      if (res.rows.length) {
+        console.log("Vector already exists, updating...");
+        const result = await db
+          .update(`${res?.rows[0].stream_id}`)
+          .set({
+            embedding: vector.values,
+            content: encryptedStringified,
+          })
+          .run();
+        console.log(result);
+      } else {
+        const createQuery = await db
+          .insert(table)
+          .value({
+            embedding: vector.values,
+            content: encryptedStringified,
+            contenthash: generateHash(encryptedStringified),
+          })
+          .context(context)
+          .run();
+        console.log(createQuery);
       }
     }
     // 8. Log the number of vectors updated
-    console.log(`Pinecone index updated with ${chunks.length} vectors`);
+    console.log(`Orbis index updated with ${chunks.length} vectors`);
   }
 };

@@ -1,23 +1,18 @@
-# Langchain, Pinecone, and GPT with Next.js - Full Stack Starter
+# OrbisDB, Lit Protocol, and Langchain Starter
 
 This is a basic starter project for building with the following tools and APIs:
 
 - Next.js
 - LangchainJS
-- Pineceone Vector Database
 - GPT3
-
-When I started diving into all of this, I felt while I understood some of the individual pieces, it was hard to piece together everything into a cohesive project. I hope this project is useful for anyone looking to build with this stack, and just needing something to start with.
+- OrbisDB
+- Lit Protocol
 
 ### What we're building
 
-We are building an app that takes text (text files), embeds them into vectors, stores them into Pinecone, and allows semantic searching of the data.
+We are building an app that takes text (text files), embeds them into vectors, stores them into OrbisDB, and allows semantic searching of the data.
 
-For anyone wondering what Semantic search is, here is an overview (taken directly from ChatGPT4):
-
-__Semantic search refers to a search approach that understands the user's intent and the contextual meaning of search queries, instead of merely matching keywords.__
-
-__It uses natural language processing and machine learning to interpret the semantics, or meaning, behind queries. This results in more accurate and relevant search results. Semantic search can consider user intent, query context, synonym recognition, and natural language understanding. Its applications range from web search engines to personalized recommendation systems.__
+We've also enabled data privacy using Lit Protocol to encrypt the corresponding text for each embedding, and programmatically decrypts based on access control conditions.
 
 ## Running the app
 
@@ -28,48 +23,162 @@ In this section I will walk you through how to deploy and run this app.
 To run this app, you need the following:
 
 1. An [OpenAI](https://platform.openai.com/) API key
-2. [Pinecone](https://app.pinecone.io/) API Key
+2. A modified [OrbisDB] instance (outlined below)
+3. Docker
+4. A [Lit](https://www.litprotocol.com/) token ID (also shown below)
 
-### Up and running
+## Initial Setup
 
 To run the app locally, follow these steps:
 
-1. Clone this repo
+1. Clone this repo and install the dependencies
 
 ```sh
-git clone git@github.com:dabit3/semantic-search-nextjs-pinecone-langchain-chatgpt.git
+git clone https://github.com/ceramicstudio/orbis-lit-langchain
+cd orbis-lit-langchain
+yarn install
 ```
 
-2. Change into the directory and install the dependencies using either NPM or Yarn
+2. In a separate terminal, clone this modified version of OrbisDB and install the dependencies
 
-3. Copy `.example.env.local` to a new file called `.env.local` and update with your API keys and environment.
+```sh
+git clone https://github.com/mzkrasner/orbisdb
+cd orbisdb
+npm install
+```
 
-    __Be sure your environment is an actual environment given to you by Pinecone, like `us-west4-gcp-free`__
+3. In your orbisdb terminal, start the database process
 
-4. (Optional) - Add your own custom text or markdown files into the `/documents` folder.
+```sh
+# Ensure that you have your Docker Daemon running in the background first
+npm run dev
+```
 
-5. Run the app:
+Your OrbisDB instance will need to initially be configured using the GUI running on `localhost:7008`. Navigate to this address in your browser and follow these steps:
+
+a. For "Ceramic node URL" enter the following value: `https://ceramic-orbisdb-mainnet-direct.hirenodes.io/`
+
+b. For "Ceramic Seed" simply click "generate a new one" and go to the next page
+
+c. For "Database configuration" enter the following:
+
+```sh
+User=postgres
+Database=postgres
+Password=postgres
+Host=localhost
+Port=5432
+```
+
+Go to the next page
+
+d. Click next on the presets page (do not select anything)
+
+e. Connect with your Metamask account and click "Get started". Keep the Orbis Studio UI in your browser as we will navigate back to it later
+
+4. Go to your `orbis-lit-langchain` terminal and copy the example env file
+
+```sh
+cp .env.example.local .env.local
+```
+
+5. Navigate to your browser running the OrbisDB UI and create a new context. You can call this anything you want. Once saved, click into your new context and copy the value prefixed with "k" into your `.env.local` file
+
+```sh
+CONTEXT_ID="<your-context-id>"
+```
+
+6. Next, we will create an OrbisDB seed to self-authenticate onto the Ceramic Network using the Orbis SDK
+
+```sh
+yarn gen-seed
+```
+
+Copy only the array of numbers into your `.env.local` file
+
+```sh
+# enter as a string like "[2, 19, 140, 10...]"
+ORBIS_SEED="your-array-here"
+```
+
+Make sure the final number in your array does not contain a trailing comma
+
+7. Copy an active and funded OpenAI API key into your `.env.local` file next to `OPENAI_API_KEY`
+
+8. Choose or create a dummy Metamask address and claim Lit Protocol Testnet tokens using that address by visiting `https://chronicle-yellowstone-faucet.getlit.dev/`
+
+9. Navigate to `https://explorer.litprotocol.com/` in your browser and sign in with the same dummy address as the previous step. Once signed in, click "Mint a new PKP". After minting, copy the value under "Token ID" into your `.env.local` file
+
+```sh
+LIT_TOKEN_ID="<your-token-id>"
+```
+
+10. Grab the private key from your dummy Metamask wallet (used in the two steps above) and enter it into your `.env.local` file
+
+```sh
+ETHEREUM_PRIVATE_KEY="<your-private-key>"
+```
+
+11. Finally, deploy your OrbisDB data model we will use to create and query via vector search
+
+```sh
+yarn deploy-model
+```
+
+Copy the value prefixed with "k" into your `.env.local` file
+
+```sh
+TABLE_ID="<your-table-id>"
+```
+
+## Running the Application
+
+Now that our environment is configured, run the following to start the application from within your `orbis-lit-langchain` terminal
 
 ```sh
 npm run dev
 ```
 
-### Need to know
+Make sure that OrbisDB is still running in your other terminal.
 
-When creating the embeddings and the index, it can take up to 2-4 minutes for the index to fully initialize. There is a settimeout function of 180 seconds in the `utils` that waits for the index to be created.
+Navigate to `localhost:3000` in your browser. 
 
-If the initialization takes longer, then it will fail the first time you try to create the embeddings. If this happens, visit [the Pinecone console](https://app.pinecone.io/) to watch and wait for the status of your index being created to finish, then run the function again.
+### Create embeddings
 
-### Running a query
+This repository contains a small portion of the [Ceramic Developer Docs](https://developers.ceramic.network/) (specifically information on Decentralized Identifiers) that the application will use to create encrypted embeddings. Feel free to replace this with other documentation if you wish
 
-__The pre-configured app data is about the [Lens protocol developer documentation](https://docs.lens.xyz/docs/overview), so it will only understand questions about it unless you replace it with your own data. Here are a couple of questions you might ask it with the default data__
+Click on "Create index and embeddings" and observe your terminal logs in both your `orbisdb` and `orbis-lit-langchain` terminals. 
 
-1. What is the difference between Lens and traditional social platforms
-2. What is the difference between the Lens SDK and the Lens API
-3. How to query Lens data in bulk?
+Once finished, your browser console will notify you that the data has been successfully created and loaded into OrbisDB.
 
-> The base of this project was guided by [this Node.js tutorial](https://www.youtube.com/watch?v=CF5buEVrYwo), with some restructuring and ported over to Next.js. You can also follow them [here](https://twitter.com/Dev__Digest/status/1656744114409406467) on Twitter!
+### Run a query 
 
-### Getting your data
+Since the dataset is limited to special knowledge about DIDs, try the following query
 
-I recommend checking out [GPT Repository Loader](https://github.com/mpoon/gpt-repository-loader) which makes it simple to turn any GitHub repo into a text format, preserving the structure of the files and file contents, making it easy to chop up and save into pinecone using my codebase.
+`tell me about decentralized identifiers in ceramic`
+
+Since this is knowledge contained in the embeddings we just created, your LLM's response will find these embeddings based on cosine similarity search and use it as context in the response (after decrypting the values). You can observe your terminal's logs to see what decrypted context it's using.
+
+**Ensure that the dummy wallet you spun up contains 0.000001 ETH or more**
+
+## Access control
+
+At the moment, very simple access control conditions are being leveraged based on whether the wallet trying to read the data contains >=0.000001 ETH (found in [utils](./utils.ts))
+
+```typescript
+const accessControlConditions = [
+  {
+    contractAddress: "",
+    standardContractType: "",
+    chain: "ethereum",
+    method: "eth_getBalance",
+    parameters: [":userAddress", "latest"],
+    returnValueTest: {
+      comparator: ">=",
+      value: "1000000000000", // 0.000001 ETH
+    },
+  },
+];
+```
+
+There is a wide array of access control conditions you can use or create. For more information, visit [Lit's Access Control documentation](https://developer.litprotocol.com/sdk/access-control/intro).
