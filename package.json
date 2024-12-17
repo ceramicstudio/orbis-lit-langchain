@@ -28,7 +28,7 @@
     "eslint": "8.41.0",
     "eslint-config-next": "13.4.4",
     "ethers": "^6.13.4",
-    "langchain": "^0.0.84",
+    "langchain": "^0.2.19",
     "next": "14.2.4",
     "pdf-parse": "^1.1.1",
     "pino-pretty": "^13.0.0",
