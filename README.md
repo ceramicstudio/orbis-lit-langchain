@@ -12,7 +12,7 @@ This is a basic starter project for building with the following tools and APIs:
 
 We are building an app that takes text (text files), embeds them into vectors, stores them into OrbisDB, and allows semantic searching of the data.
 
-We've also enabled data privacy using Lit Protocol to encrypt the corresponding text for each embedding, and programmatically decrypts based on access control conditions.
+We've also enabled data privacy using Lit Protocol to encrypt the corresponding text for each embedding, and programmatically decrypt based on specified access control conditions.
 
 ## Running the app
 
@@ -58,6 +58,8 @@ Your OrbisDB instance will need to initially be configured using the GUI running
 
 a. For "Ceramic node URL" enter the following value: `https://ceramic-orbisdb-mainnet-direct.hirenodes.io/`
 
+This is the default public Ceramic node that the hosted Orbis Studio uses. We will leverage this to avoid the setup of a local Ceramic node
+
 b. For "Ceramic Seed" simply click "generate a new one" and go to the next page
 
 c. For "Database configuration" enter the following:
@@ -69,6 +71,8 @@ Password=postgres
 Host=localhost
 Port=5432
 ```
+
+These are the default configurations your Docker image is using. Entering them here enables you to configure your OrbisDB instance to index Ceramic stream data using your dockerized Postgres instance.
 
 Go to the next page
 
@@ -88,11 +92,15 @@ cp .env.example.local .env.local
 CONTEXT_ID="<your-context-id>"
 ```
 
+Contexts allow developers to organize their data across different applications or projects. When this application uses the Orbis SDK to write embeddings, it will leverage this context when making the write request
+
 6. Next, we will create an OrbisDB seed to self-authenticate onto the Ceramic Network using the Orbis SDK
 
 ```sh
 yarn gen-seed
 ```
+
+This is the seed the Orbis SDK will use to self-authenticate your OrbisDB client onto the Ceramic Network in order to perform writes.
 
 Copy only the array of numbers into your `.env.local` file
 
@@ -124,6 +132,8 @@ ETHEREUM_PRIVATE_KEY="<your-private-key>"
 ```sh
 yarn deploy-model
 ```
+
+This create a new "table" in your OrbisDB instance by creating a Ceramic model stream using the model definition found in [scripts/deploy-model.mjs](./scripts/deploy-model.mjs) on line 15.
 
 Copy the value prefixed with "k" into your `.env.local` file
 
