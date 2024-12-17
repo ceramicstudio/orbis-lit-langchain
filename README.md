@@ -146,7 +146,7 @@ TABLE_ID="<your-table-id>"
 Now that our environment is configured, run the following to start the application from within your `orbis-lit-langchain` terminal
 
 ```sh
-npm run dev
+yarn dev
 ```
 
 Make sure that OrbisDB is still running in your other terminal.

@@ -135,8 +135,8 @@ export const updateOrbis = async (docs, context, table) => {
       const encryptedContent = await lit.encrypt(vector.metadata.pageContent);
       const encryptedStringified = JSON.stringify(encryptedContent);
 
-      // wait one second
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // wait half a second to avoid rate limiting
+      await new Promise((resolve) => setTimeout(resolve, 500));
       // first check if the vector already exists
       const query = `SELECT * FROM ${table} WHERE contenthash = '${generateHash(
         encryptedStringified
