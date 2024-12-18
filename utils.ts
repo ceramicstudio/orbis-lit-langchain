@@ -2,7 +2,6 @@ import { OpenAIEmbeddings } from "langchain/embeddings/openai";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
 import { OrbisDB } from "@useorbis/db-sdk";
 import { OrbisKeyDidAuth } from "@useorbis/db-sdk/auth";
-import crypto from "crypto";
 import axios from "axios";
 import { Lit } from "@/lib/litUtils";
 
@@ -128,37 +127,23 @@ export const updateOrbis = async (docs, context, table) => {
           txtPath: txtPath,
         },
       };
-      function generateHash(content) {
-        return crypto.createHash("sha256").update(content).digest("hex");
-      }
 
+      const formattedEmbedding = `ARRAY[${vector.values.join(", ")}]::vector`;
       const encryptedContent = await lit.encrypt(vector.metadata.pageContent);
       const encryptedStringified = JSON.stringify(encryptedContent);
 
       // wait half a second to avoid rate limiting
       await new Promise((resolve) => setTimeout(resolve, 500));
       // first check if the vector already exists
-      const query = `SELECT * FROM ${table} WHERE contenthash = '${generateHash(
-        encryptedStringified
-      )}'`;
+      const query = `SELECT * FROM ${table} WHERE embedding = ${formattedEmbedding}`;
       const res = await db.select().raw(query).run();
-      if (res.rows.length) {
-        console.log("Vector already exists, updating...");
-        const result = await db
-          .update(`${res?.rows[0].stream_id}`)
-          .set({
-            embedding: vector.values,
-            content: encryptedStringified,
-          })
-          .run();
-        console.log(result);
-      } else {
+      // only insert if the vector does not already exist
+      if (!res.rows.length) {
         const createQuery = await db
           .insert(table)
           .value({
             embedding: vector.values,
             content: encryptedStringified,
-            contenthash: generateHash(encryptedStringified),
           })
           .context(context)
           .run();

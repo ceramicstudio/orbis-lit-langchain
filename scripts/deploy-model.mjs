@@ -31,9 +31,6 @@ const embeddingModel = {
       content: {
         type: "string",
       },
-      contenthash: {
-        type: "string",
-      },
     },
     additionalProperties: false,
   },
