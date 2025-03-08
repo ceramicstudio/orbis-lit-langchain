@@ -22,7 +22,7 @@
     "dids": "^4.0.4",
     "@useorbis/db-sdk": "0.0.60-alpha",
     "autoprefixer": "10.4.14",
-    "axios": "^1.7.9",
+    "axios": "^1.8.2",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
     "eslint": "8.41.0",
