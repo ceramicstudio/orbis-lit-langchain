@@ -129,8 +129,8 @@ export const updateOrbis = async (docs, context, table) => {
       };
 
       const formattedEmbedding = `ARRAY[${vector.values.join(", ")}]::vector`;
-      const encryptedContent = await lit.encrypt(vector.metadata.pageContent);
-      const encryptedStringified = JSON.stringify(encryptedContent);
+      // const encryptedContent = await lit.encrypt(vector.metadata.pageContent);
+      // const encryptedStringified = JSON.stringify(encryptedContent);
 
       // wait half a second to avoid rate limiting
       await new Promise((resolve) => setTimeout(resolve, 500));
@@ -143,7 +143,7 @@ export const updateOrbis = async (docs, context, table) => {
           .insert(table)
           .value({
             embedding: vector.values,
-            content: encryptedStringified,
+            content: vector.metadata.pageContent,
           })
           .context(context)
           .run();
